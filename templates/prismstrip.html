@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PrismStrip · 窄带光谱测读台</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='prismstrip.css') }}">
+  <script defer src="{{ url_for('static', filename='prismstrip.js') }}"></script>
+</head>
+<body>
+<header class="masthead">
+  <a class="brand" href="/"><i aria-hidden="true"></i> PrismStrip</a>
+  <span class="mast-label">窄带光谱测读台</span>
+  <a class="external" href="/prepare">照片准备 ↗</a>
+</header>
+<main>
+  <section class="introduction">
+    <div><h1>相机光谱条带测读</h1><p>给原片两处波长标记，核对色散条带的实际像素与小窗信号。</p></div>
+    <div class="top-actions">
+      <button id="practice" class="primary" type="button">打开练习光谱</button>
+      <button id="open-import" type="button">导入原片</button>
+    </div>
+  </section>
+  <p id="notice" class="notice" role="status" hidden></p>
+  <section class="library">
+    <label for="library">谱带卡</label>
+    <select id="library"><option value="">选取已存卡片</option></select>
+    <span id="origin"></span>
+  </section>
+  <section id="empty" class="empty">
+    <div class="empty-spectrum" aria-hidden="true"><i></i></div>
+    <h2>选择一张色散条带原照</h2>
+    <p>用有已知左、右波长点的照片，并填写实际色散条带的采样行。</p>
+  </section>
+  <section id="workspace" class="workspace" hidden>
+    <div class="left">
+      <section class="panel source">
+        <div class="panel-head">
+          <div><h2 id="card-title">原片</h2><span id="dimensions"></span></div>
+          <div class="modes" role="group" aria-label="原片谱带模式">
+            <button id="probe-mode" data-mode="probe" aria-pressed="true" type="button">点读</button>
+            <button id="mark-mode" data-mode="mark" aria-pressed="false" type="button">取光带</button>
+          </div>
+        </div>
+        <div class="camera"><canvas id="capture" aria-label="色散条带原照，可点击取样或输入原片像素坐标"></canvas></div>
+        <div class="probe">
+          <b>原片点读</b>
+          <form id="probe-form"><label>X <input id="probe-x" type="number" min="0" step="1" required></label>
+            <label>Y <input id="probe-y" type="number" min="0" step="1" required></label>
+            <button type="submit">读取</button></form>
+          <span id="probe-result">选择原片像素</span>
+        </div>
+      </section>
+      <section class="panel profile">
+        <div class="panel-head">
+          <div><h2>光谱条带亮度</h2><span>原片列 · px</span></div>
+          <span class="legend"><i></i> 相机背景亮度</span>
+        </div>
+        <canvas id="chart" width="850" height="166" aria-label="色散条带的实际各列亮度"></canvas>
+      </section>
+    </div>
+    <aside class="right">
+      <section class="panel readout">
+        <div class="panel-head"><h2>当前取样波长</h2><span id="measurement-state"></span></div>
+        <div class="volume"><strong id="wavelength-value">—</strong><span id="wavelength-unit"></span></div>
+        <p id="selected-level"></p>
+      </section>
+      <form id="calibration" class="panel settings">
+        <div class="panel-head"><div><h2>波长标定与采样</h2><span>左右两点在原片范围内换算波长</span></div></div>
+        <label class="wide">卡片名称<input id="name" maxlength="80" required></label>
+        <fieldset><legend>原片标记 · px</legend><div class="form-grid">
+          <label>左标记 X<input data-setting="left" type="number" step="1" min="0" required></label>
+          <label>右标记 X<input data-setting="right" type="number" step="1" min="8" required></label>
+          <label>取样 X<input data-setting="focus" type="number" step="1" min="0" required></label>
+          <label>采样上行<input data-setting="top" type="number" step="1" min="0" required></label>
+          <label>采样下行<input data-setting="bottom" type="number" step="1" min="0" required></label>
+          <label>窗口半宽<input data-setting="half_width" type="number" step="1" min="1" max="300" required></label>
+        </div></fieldset>
+        <fieldset><legend>波长与信号</legend><div class="form-grid">
+          <label>左波长 nm<input data-setting="left_nm" type="number" step="any" min="100" max="1900" required></label>
+          <label>右波长 nm<input data-setting="right_nm" type="number" step="any" min="100" max="1900" required></label>
+          <label>背景亮度<input data-setting="floor" type="number" step="any" min="0" max="254" required></label>
+        </div></fieldset>
+        <button id="save" class="primary" type="submit">保存并读谱</button>
+      </form>
+      <section class="panel outputs">
+        <div class="panel-head"><h2>谱带交接</h2></div>
+        <div><a id="proof" download>PNG 校样 ↓</a><a id="csv" download>CSV 读数 ↓</a><a id="zip" download>ZIP 谱带卡 ↓</a></div>
+        <button id="prepare" type="button">将原片送入照片准备 ↗</button>
+      </section>
+    </aside>
+  </section>
+</main>
+<dialog id="import">
+  <form id="upload">
+    <h2>导入色散条带原照</h2>
+    <label>谱带卡名称<input name="name" maxlength="80" required></label>
+    <label>照片<input name="photo" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/tiff" required></label>
+    <p id="import-notice" role="status"></p>
+    <div class="top-actions"><button id="cancel-import" type="button">取消</button><button class="primary" type="submit">建立谱带卡</button></div>
+  </form>
+</dialog>
+</body>
+</html>
