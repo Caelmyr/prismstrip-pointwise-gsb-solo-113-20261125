@@ -64,11 +64,18 @@
         <div class="panel-head"><h2>当前取样波长</h2><span id="measurement-state"></span></div>
         <div class="volume"><strong id="wavelength-value">—</strong><span id="wavelength-unit"></span></div>
         <p id="selected-level"></p>
+        <p id="track-level"></p>
       </section>
       <form id="calibration" class="panel settings">
         <div class="panel-head"><div><h2>波长标定与采样</h2><span>左右两点在原片范围内换算波长</span></div></div>
         <label class="wide">卡片名称<input id="name" maxlength="80" required></label>
-        <fieldset><legend>原片标记 · px</legend><div class="form-grid">
+        <fieldset><legend>跟线与采样</legend><div class="form-grid">
+          <label class="wide">跟线方式
+            <select data-setting="method">
+              <option value="average">原平均方式 · 同列直接平均</option>
+              <option value="track">采用方式 · 逐行实峰对齐</option>
+            </select>
+          </label>
           <label>左标记 X<input data-setting="left" type="number" step="1" min="0" required></label>
           <label>右标记 X<input data-setting="right" type="number" step="1" min="8" required></label>
           <label>取样 X<input data-setting="focus" type="number" step="1" min="0" required></label>

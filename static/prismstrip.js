@@ -73,6 +73,15 @@ function paintSource() {
   ctx.moveTo(result.focus,cfg.top-7);
   ctx.lineTo(result.focus,cfg.bottom+7);
   ctx.stroke();
+  if (result.track) {
+    // 绿点为各行实际找到并采用的参考峰；没有绿点的采样行是无证行。
+    ctx.fillStyle = "#7ef0b1";
+    for (const item of result.track.evidence) {
+      ctx.beginPath();
+      ctx.arc(item.peak_x, item.y, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   if (probe) {
     ctx.strokeStyle = "#e6fbfd";
     ctx.strokeRect(probe.x - 5, probe.y - 5, 10, 10);
@@ -109,8 +118,11 @@ function paintChart() {
   ctx.lineWidth = 2;
   ctx.strokeStyle = "#8bcbd7";
   ctx.beginPath();
-  for (const [index,p] of result.profile.entries()) {
-    if (!index) ctx.moveTo(xAt(p.x),yAt(p.brightness));
+  let pen = false;
+  for (const p of result.profile) {
+    // 无证列没有均值：抬笔断开，不用相邻列连线补造。
+    if (p.brightness === null) { pen = false; continue; }
+    if (!pen) { ctx.moveTo(xAt(p.x),yAt(p.brightness)); pen = true; }
     else ctx.lineTo(xAt(p.x),yAt(p.brightness));
   }
   ctx.stroke();
@@ -124,8 +136,14 @@ function paintChart() {
 }
 
 function pointLabel(point) {
-  const wavelength = point.wavelength_nm === null ? "波长未标定" : point.wavelength_nm.toFixed(2) + " nm";
-  return "(" + point.x + ", " + point.y + ") · " + wavelength + " · " + point.brightness.toFixed(1);
+  const base = "(" + point.x + ", " + point.y + ") · " + point.brightness.toFixed(1);
+  if (!("corrected_x" in point)) {
+    const wavelength = point.wavelength_nm === null ? "波长未标定" : point.wavelength_nm.toFixed(2) + " nm";
+    return base + " · " + wavelength;
+  }
+  if (point.corrected_x === null) return base + " · 该行无证，不报校正波长";
+  const wavelength = point.wavelength_nm === null ? "校正后超出标定范围" : point.wavelength_nm.toFixed(2) + " nm";
+  return base + " · 校正列 X " + point.corrected_x + " · " + wavelength;
 }
 
 function show() {
@@ -145,10 +163,23 @@ function show() {
   const reading = result.reading;
   get("wavelength-value").textContent = result.center_nm === null ? "—" : result.center_nm.toFixed(2);
   get("wavelength-unit").textContent = result.center_nm === null ? "波长未标定" : "nm";
-  get("measurement-state").textContent = "原片 X " + result.focus;
+  get("measurement-state").textContent = (result.method === "track" ? "逐行实峰对齐 · " : "同列平均 · ")
+    + "原片 X " + result.focus;
   get("selected-level").textContent = reading
     ? "背景以上信号 " + reading.signal.toFixed(2) + " AU·px · " + reading.columns + " 列"
     : "当前小窗没有覆盖谱带";
+  const trackLine = get("track-level");
+  if (result.track) {
+    trackLine.hidden = false;
+    const track = result.track;
+    const missing = track.rows_total - track.rows_used;
+    trackLine.textContent = "实峰采用 " + track.rows_used + "/" + track.rows_total
+      + " 行" + (missing ? " · 无证 " + missing + " 行不补" : "")
+      + " · 峰窗 X " + track.low + "–" + track.high;
+  } else {
+    trackLine.hidden = true;
+    trackLine.textContent = "";
+  }
   for (const [id, filename] of Object.entries({proof: "proof.png", csv: "profile.csv", zip: "observation.zip"})) {
     get(id).href = "/prismstrip" + route("/export/" + filename) + savedQuery();
   }
@@ -223,7 +254,8 @@ get("probe-form").addEventListener("submit", (event) => {
 get("calibration").addEventListener("submit", (event) => {
   event.preventDefault();
   action(async () => {
-    const fields = Object.fromEntries(settings.map((field) => [field.dataset.setting, Number(field.value)]));
+    const fields = Object.fromEntries(settings.map((field) =>
+      [field.dataset.setting, field.dataset.setting === "method" ? field.value : Number(field.value)]));
     const card = await api(route(""), {
       method: "PATCH", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({revision: state.card.revision, name: get("name").value, settings: fields}),
