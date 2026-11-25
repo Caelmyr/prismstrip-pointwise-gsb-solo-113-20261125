@@ -73,7 +73,13 @@ def create_app(directory=None):
         card = cards.read(key, request.args.get("revision"))
         x = integer(request.args.get("x"), "X", 0, card["width"] - 1)
         y = integer(request.args.get("y"), "Y", 0, card["height"] - 1)
-        return jsonify(dispersion.point(dispersion.pixels(cards.photo(key)), x, y, card["settings"]))
+        image = dispersion.pixels(cards.photo(key))
+        values = dispersion.profile(image, card["settings"])
+        reading = dispersion.band(values, card["settings"])
+        split = dispersion.split_band(reading, card["settings"]) if reading else None
+        if reading:
+            reading = {key2: value for key2, value in reading.items() if not key2.startswith("_")}
+        return jsonify(dispersion.point(image, x, y, card["settings"], reading, split))
 
     @api.get("/cards/<key>/export/profile.csv")
     def profile(key):

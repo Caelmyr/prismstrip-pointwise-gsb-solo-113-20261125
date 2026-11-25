@@ -65,8 +65,25 @@ function paintSource() {
   ctx.strokeRect(cfg.left, cfg.top, cfg.right - cfg.left, cfg.bottom - cfg.top);
   ctx.setLineDash([]);
   if (result.reading) {
+    const split = result.split;
+    const resolved = split && split.status === "resolved";
     ctx.strokeStyle = "#fccb9c";
     ctx.strokeRect(result.reading.left, cfg.top, result.reading.right-result.reading.left, cfg.bottom-cfg.top);
+    if (resolved) {
+      ctx.strokeStyle = "#ff6f91";
+      ctx.beginPath();
+      ctx.moveTo(split.split_x, cfg.top - 7);
+      ctx.lineTo(split.split_x, cfg.bottom + 7);
+      ctx.stroke();
+      const peakColors = ["#79b9fd", "#83e8cc"];
+      split.peak_x.forEach((peakX, i) => {
+        ctx.strokeStyle = peakColors[i];
+        ctx.beginPath();
+        ctx.moveTo(peakX, cfg.top - 4);
+        ctx.lineTo(peakX, cfg.bottom + 4);
+        ctx.stroke();
+      });
+    }
   }
   ctx.strokeStyle = "#ffaf85";
   ctx.beginPath();
@@ -91,8 +108,18 @@ function paintChart() {
   ctx.fillStyle = "#141d2a";
   ctx.fillRect(0,0,width,height);
   if (result.reading) {
-    ctx.fillStyle = "#29364e";
-    ctx.fillRect(xAt(result.reading.left), yAt(255), Math.max(2,xAt(result.reading.right)-xAt(result.reading.left)), yAt(0)-yAt(255));
+    const split = result.split;
+    const resolved = split && split.status === "resolved";
+    const shade = (left, right, color) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(xAt(left), yAt(255), Math.max(2, xAt(right) - xAt(left)), yAt(0) - yAt(255));
+    };
+    if (resolved) {
+      shade(split.left_band.left, split.left_band.right, "#243a57");
+      shade(split.right_band.left, split.right_band.right, "#1f403c");
+    } else {
+      shade(result.reading.left, result.reading.right, "#29364e");
+    }
   }
   ctx.font = "12px monospace";
   ctx.fillStyle = "#a4b8d1";
@@ -121,11 +148,81 @@ function paintChart() {
   ctx.lineTo(xAt(cfg.right),yAt(cfg.floor));
   ctx.stroke();
   ctx.setLineDash([]);
+  const split = result.split;
+  if (split && split.status === "resolved") {
+    ctx.strokeStyle = "#ff6f91";
+    ctx.beginPath();
+    ctx.moveTo(xAt(split.split_x), yAt(0));
+    ctx.lineTo(xAt(split.split_x), yAt(255));
+    ctx.stroke();
+    ctx.fillStyle = "#e7f0fa";
+    for (const band of [split.left_band, split.right_band]) {
+      const px = xAt(band.peak.x);
+      const py = yAt(band.peak.brightness);
+      ctx.beginPath();
+      ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.font = "11px monospace";
+    ctx.fillStyle = "#ff9db4";
+    ctx.fillText("x" + split.split_x, xAt(split.split_x) + 4, yAt(250));
+  }
 }
 
 function pointLabel(point) {
   const wavelength = point.wavelength_nm === null ? "波长未标定" : point.wavelength_nm.toFixed(2) + " nm";
-  return "(" + point.x + ", " + point.y + ") · " + wavelength + " · " + point.brightness.toFixed(1);
+  let band = "";
+  if (point.window_band === "left") band = " · 左带";
+  else if (point.window_band === "right") band = " · 右带";
+  else if (point.window_band === "window") band = " · 取样窗内（未分双线）";
+  return "(" + point.x + ", " + point.y + ") · " + wavelength + " · " + point.brightness.toFixed(1) + band;
+}
+
+function nmText(value) {
+  return value === null ? "未标定" : value.toFixed(2) + " nm";
+}
+
+function renderSplit(result) {
+  const panel = get("split-panel");
+  const split = result.split;
+  if (!split || !result.reading) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const reason = get("split-reason");
+  const bands = get("split-bands");
+  bands.replaceChildren();
+  if (split.status === "resolved") {
+    get("split-title").textContent = "双线已分开";
+    get("split-summary").textContent = "分界列 x" + split.split_x + "（归左带）";
+    reason.hidden = true;
+    for (const [label, band, color] of [
+      ["左带", split.left_band, "#79b9fd"],
+      ["右带", split.right_band, "#83e8cc"],
+    ]) {
+      const row = document.createElement("div");
+      row.className = "band-row";
+      const head = document.createElement("b");
+      head.style.color = color;
+      head.textContent = label;
+      const text = document.createElement("span");
+      text.textContent = "峰 x" + band.peak.x + " · " + nmText(band.peak.wavelength_nm)
+        + " · 信号 " + band.signal.toFixed(2) + " · " + band.columns + " 列";
+      row.append(head, text);
+      bands.append(row);
+    }
+    const total = document.createElement("p");
+    total.className = "split-total";
+    total.textContent = "两带信号合计 " + split.total_signal.toFixed(2)
+      + " = 原窗口合读 " + result.reading.signal.toFixed(2) + "（不插列、不重复）";
+    bands.append(total);
+  } else {
+    get("split-title").textContent = "双线还分不开";
+    get("split-summary").textContent = "保留原窗口合读";
+    reason.hidden = false;
+    reason.textContent = split.reason;
+  }
 }
 
 function show() {
@@ -147,8 +244,9 @@ function show() {
   get("wavelength-unit").textContent = result.center_nm === null ? "波长未标定" : "nm";
   get("measurement-state").textContent = "原片 X " + result.focus;
   get("selected-level").textContent = reading
-    ? "背景以上信号 " + reading.signal.toFixed(2) + " AU·px · " + reading.columns + " 列"
+    ? "背景以上合读信号 " + reading.signal.toFixed(2) + " AU·px · " + reading.columns + " 列"
     : "当前小窗没有覆盖谱带";
+  renderSplit(result);
   for (const [id, filename] of Object.entries({proof: "proof.png", csv: "profile.csv", zip: "observation.zip"})) {
     get(id).href = "/prismstrip" + route("/export/" + filename) + savedQuery();
   }

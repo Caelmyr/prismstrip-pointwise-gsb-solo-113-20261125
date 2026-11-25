@@ -8,6 +8,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
 
 from image_lab.validation import Invalid, integer, number
 
+from . import doublet
+
 
 LUMA = np.array([0.2126, 0.7152, 0.0722])
 MAX_IMAGE_BYTES = 18 * 1024 * 1024
@@ -68,10 +70,11 @@ def wavelength(x, config):
     return config["left_nm"] + frac * (config["right_nm"]-config["left_nm"])
 
 
-def point(image, x, y, config):
+def point(image, x, y, config, reading=None, split=None):
     rgb = image[y, x]
     return {"x": x, "y": y, "rgb": [int(value) for value in rgb],
-            "brightness": float(rgb @ LUMA), "wavelength_nm": wavelength(x, config)}
+            "brightness": float(rgb @ LUMA), "wavelength_nm": wavelength(x, config),
+            "window_band": doublet.window_membership(x, reading, split)}
 
 
 def profile(image, config):
@@ -92,13 +95,30 @@ def band(values, config):
         return None
     corrected = [max(0, sample["brightness"] - config["floor"]) for sample in selected]
     return {"left": selected[0]["x"], "right": selected[-1]["x"], "columns": len(selected),
-            "signal": float(sum(corrected)), "peak": max(selected, key=lambda sample: sample["brightness"])}
+            "signal": float(math.fsum(corrected)),
+            "peak": max(selected, key=lambda sample: sample["brightness"]),
+            "_selected": selected}
+
+
+def split_band(reading, config):
+    """Resolve two lines inside the current window; fall back to the combined read."""
+    selected = reading["_selected"]
+    decision = doublet.resolve(selected, config["floor"])
+    if not decision["resolved"]:
+        return {"status": "unresolved", "reason": decision["reason"],
+                "supported_peaks": decision.get("supported_peaks", []),
+                "rejected_valleys": decision.get("rejected_valleys", [])}
+    return doublet.split_reading(selected, config["floor"], decision)
 
 
 def report(image, config):
     values = profile(image, config)
-    return {"profile": values, "reading": band(values, config), "focus": config["focus"],
-            "center_nm": wavelength(config["focus"], config)}
+    reading = band(values, config)
+    split = split_band(reading, config) if reading else None
+    if reading:
+        reading = {key: value for key, value in reading.items() if not key.startswith("_")}
+    return {"profile": values, "reading": reading, "split": split,
+            "focus": config["focus"], "center_nm": wavelength(config["focus"], config)}
 
 
 def practice():
